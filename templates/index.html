@@ -2,50 +2,353 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Word 단어 치환기</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
-    h1 { color: #333; }
-    input[type="file"] { margin: 10px 0; }
-    .rule-row { display: flex; gap: 8px; margin: 6px 0; align-items: center; }
-    .rule-row input { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 8px 16px; margin: 4px; border: none; border-radius: 4px; cursor: pointer; }
-    #addBtn { background: #eee; }
-    #submitBtn { background: #4CAF50; color: white; font-size: 16px; }
-    #status { margin-top: 12px; color: #555; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a23;
+      --surface2: #22222e;
+      --border: #2e2e3e;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --text: #e8e8f0;
+      --text-muted: #7a7a9a;
+      --success: #34d399;
+      --error: #f87171;
+    }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    /* 배경 장식 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: -200px;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -200px;
+      right: -200px;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 580px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 헤더 */
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .header .icon {
+      font-size: 40px;
+      display: block;
+      margin-bottom: 12px;
+      animation: float 3s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-6px); }
+    }
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header p {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* 카드 */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: #3e3e55; }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 14px;
+    }
+
+    /* 파일 업로드 */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.05);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon { font-size: 32px; margin-bottom: 8px; }
+    .upload-text { font-size: 14px; color: var(--text-muted); }
+    .upload-text strong { color: var(--accent2); }
+
+    /* 파일 태그 목록 */
+    #fileList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .file-tag {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-family: 'DM Mono', monospace;
+      color: var(--accent2);
+    }
+
+    /* 치환 규칙 */
+    .rule-row {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 36px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      animation: fadeUp 0.3s ease both;
+    }
+    .rule-row input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      transition: border-color 0.2s, background 0.2s;
+      outline: none;
+      width: 100%;
+    }
+    .rule-row input:focus {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.06);
+    }
+    .rule-row input::placeholder { color: var(--text-muted); font-size: 12px; }
+    .arrow {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+    .del-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 6px;
+      transition: all 0.2s;
+      line-height: 1;
+    }
+    .del-btn:hover { border-color: var(--error); color: var(--error); background: rgba(248,113,113,0.08); }
+
+    /* 버튼들 */
+    .btn-add {
+      width: 100%;
+      margin-top: 4px;
+      padding: 10px;
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .btn-add:hover { border-color: var(--accent); color: var(--accent2); background: rgba(108,99,255,0.05); }
+
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Noto Sans KR', sans-serif;
+      letter-spacing: 0.3px;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(108,99,255,0.35); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* 상태 메시지 */
+    #status {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--text-muted);
+      min-height: 20px;
+      transition: all 0.3s;
+    }
+    #status.success { color: var(--success); }
+    #status.error   { color: var(--error); }
+    #status.loading::after {
+      content: '';
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--accent);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <h1>📝 Word 단어 치환기</h1>
-
-  <p><strong>1. docx 파일 업로드</strong></p>
-  <input type="file" id="fileInput" accept=".docx">
-
-  <p><strong>2. 치환 규칙 입력</strong></p>
-  <div id="rules">
-    <div class="rule-row">
-      <input class="old" placeholder="찾을 단어">
-      <span>→</span>
-      <input class="new" placeholder="바꿀 단어">
+  <div class="container">
+    <div class="header">
+      <span class="icon">📄</span>
+      <h1>Word 단어 치환기</h1>
+      <p>docx 파일의 단어를 일괄 치환하고 바로 다운로드하세요</p>
     </div>
-  </div>
-  <button id="addBtn" onclick="addRule()">+ 규칙 추가</button>
 
-  <br><br>
-  <button id="submitBtn" onclick="process()">✅ 치환 후 다운로드</button>
-  <p id="status"></p>
+    <!-- 파일 업로드 -->
+    <div class="card" style="animation-delay:0.1s">
+      <div class="card-label">① 파일 업로드</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".docx" multiple>
+        <div class="upload-icon">📁</div>
+        <div class="upload-text"><strong>클릭</strong>하거나 파일을 드래그하세요</div>
+        <div class="upload-text" style="font-size:12px; margin-top:4px;">.docx 파일 · 여러 개 선택 가능</div>
+      </div>
+      <div id="fileList"></div>
+    </div>
+
+    <!-- 치환 규칙 -->
+    <div class="card" style="animation-delay:0.2s">
+      <div class="card-label">② 치환 규칙</div>
+      <div id="rules">
+        <div class="rule-row">
+          <input class="old" placeholder="찾을 단어">
+          <div class="arrow">→</div>
+          <input class="new" placeholder="바꿀 단어">
+          <button class="del-btn" onclick="delRule(this)">×</button>
+        </div>
+      </div>
+      <button class="btn-add" onclick="addRule()">+ 규칙 추가</button>
+    </div>
+
+    <!-- 실행 -->
+    <button class="btn-submit" id="submitBtn" onclick="process()">✦ 치환 후 다운로드</button>
+    <div id="status"></div>
+  </div>
 
   <script>
+    const uploadZone = document.getElementById("uploadZone");
+    const fileInput  = document.getElementById("fileInput");
+    const fileList   = document.getElementById("fileList");
+    const status     = document.getElementById("status");
+    const submitBtn  = document.getElementById("submitBtn");
+
+    // 드래그앤드롭
+    uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+    uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+    uploadZone.addEventListener("drop", e => {
+      e.preventDefault();
+      uploadZone.classList.remove("dragover");
+      fileInput.files = e.dataTransfer.files;
+      updateFileList();
+    });
+
+    fileInput.addEventListener("change", updateFileList);
+
+    function updateFileList() {
+      const files = Array.from(fileInput.files);
+      fileList.innerHTML = files.map(f =>
+        `<span class="file-tag">📄 ${f.name}</span>`
+      ).join("");
+    }
+
     function addRule() {
       const div = document.createElement("div");
       div.className = "rule-row";
-      div.innerHTML = `<input class="old" placeholder="찾을 단어"><span>→</span><input class="new" placeholder="바꿀 단어">`;
+      div.innerHTML = `
+        <input class="old" placeholder="찾을 단어">
+        <div class="arrow">→</div>
+        <input class="new" placeholder="바꿀 단어">
+        <button class="del-btn" onclick="delRule(this)">×</button>`;
       document.getElementById("rules").appendChild(div);
     }
 
+    function delRule(btn) {
+      const rows = document.querySelectorAll(".rule-row");
+      if (rows.length === 1) return; // 최소 1개 유지
+      btn.closest(".rule-row").remove();
+    }
+
     async function process() {
-      const file = document.getElementById("fileInput").files[0];
-      if (!file) { alert("파일을 선택해주세요!"); return; }
+      const files = fileInput.files;
+      if (!files.length) { setStatus("파일을 선택해주세요.", "error"); return; }
 
       const rules = {};
       document.querySelectorAll(".rule-row").forEach(row => {
@@ -53,25 +356,37 @@
         const nw  = row.querySelector(".new").value.trim();
         if (old) rules[old] = nw;
       });
+      if (!Object.keys(rules).length) { setStatus("치환 규칙을 입력해주세요.", "error"); return; }
 
-      if (Object.keys(rules).length === 0) { alert("치환 규칙을 입력해주세요!"); return; }
-
-      document.getElementById("status").textContent = "처리 중...";
+      setStatus("처리 중", "loading");
+      submitBtn.disabled = true;
 
       const formData = new FormData();
-      formData.append("file", file);
+      for (const file of files) formData.append("files", file);
       formData.append("rules", JSON.stringify(rules));
 
-      const res = await fetch("/replace", { method: "POST", body: formData });
-      if (!res.ok) { alert("오류가 발생했습니다"); return; }
+      try {
+        const res = await fetch("/replace", { method: "POST", body: formData });
+        if (!res.ok) throw new Error();
 
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "replaced.docx";
-      a.click();
+        const blob = await res.blob();
+        const filename = files.length === 1 ? files[0].name : "replaced_files.zip";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
 
-      document.getElementById("status").textContent = "✅ 완료! 파일이 다운로드됩니다.";
+        setStatus(`✅ 완료! ${files.length}개 파일 다운로드됩니다.`, "success");
+      } catch {
+        setStatus("오류가 발생했습니다. 다시 시도해주세요.", "error");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function setStatus(msg, type) {
+      status.textContent = msg;
+      status.className = type || "";
     }
   </script>
 </body>
