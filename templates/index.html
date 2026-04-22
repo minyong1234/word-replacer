@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Word 단어 치환기</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    input[type="file"] { margin: 10px 0; }
+    .rule-row { display: flex; gap: 8px; margin: 6px 0; align-items: center; }
+    .rule-row input { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 8px 16px; margin: 4px; border: none; border-radius: 4px; cursor: pointer; }
+    #addBtn { background: #eee; }
+    #submitBtn { background: #4CAF50; color: white; font-size: 16px; }
+    #status { margin-top: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>📝 Word 단어 치환기</h1>
+
+  <p><strong>1. docx 파일 업로드</strong></p>
+  <input type="file" id="fileInput" accept=".docx">
+
+  <p><strong>2. 치환 규칙 입력</strong></p>
+  <div id="rules">
+    <div class="rule-row">
+      <input class="old" placeholder="찾을 단어">
+      <span>→</span>
+      <input class="new" placeholder="바꿀 단어">
+    </div>
+  </div>
+  <button id="addBtn" onclick="addRule()">+ 규칙 추가</button>
+
+  <br><br>
+  <button id="submitBtn" onclick="process()">✅ 치환 후 다운로드</button>
+  <p id="status"></p>
+
+  <script>
+    function addRule() {
+      const div = document.createElement("div");
+      div.className = "rule-row";
+      div.innerHTML = `<input class="old" placeholder="찾을 단어"><span>→</span><input class="new" placeholder="바꿀 단어">`;
+      document.getElementById("rules").appendChild(div);
+    }
+
+    async function process() {
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) { alert("파일을 선택해주세요!"); return; }
+
+      const rules = {};
+      document.querySelectorAll(".rule-row").forEach(row => {
+        const old = row.querySelector(".old").value.trim();
+        const nw  = row.querySelector(".new").value.trim();
+        if (old) rules[old] = nw;
+      });
+
+      if (Object.keys(rules).length === 0) { alert("치환 규칙을 입력해주세요!"); return; }
+
+      document.getElementById("status").textContent = "처리 중...";
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("rules", JSON.stringify(rules));
+
+      const res = await fetch("/replace", { method: "POST", body: formData });
+      if (!res.ok) { alert("오류가 발생했습니다"); return; }
+
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "replaced.docx";
+      a.click();
+
+      document.getElementById("status").textContent = "✅ 완료! 파일이 다운로드됩니다.";
+    }
+  </script>
+</body>
+</html>
