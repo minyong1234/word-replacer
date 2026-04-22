@@ -2,18 +2,6 @@ from flask import Flask, request, send_file, render_template, jsonify
 from replacer import replace_in_docx
 import os, json, tempfile, zipfile
 from concurrent.futures import ThreadPoolExecutor  # 추가!
-import time
-
-def process_file(file_data):
-    file_bytes, filename, rules, tmpdir = file_data
-    start = time.time()
-    input_path  = os.path.join(tmpdir, f"in_{filename}")
-    output_path = os.path.join(tmpdir, f"out_{filename}")
-    with open(input_path, "wb") as f:
-        f.write(file_bytes)
-    replace_in_docx(input_path, output_path, rules)
-    print(f"{filename}: {time.time() - start:.2f}초")
-    return output_path, filename
 
 app = Flask(__name__)
 
