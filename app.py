@@ -78,24 +78,20 @@ def build_col_map(start_year, start_month):
         cur_y, cur_m = next_ym(cur_y, cur_m)
     return mapping
 
-def build_header_layout(start_year, start_month, end_year, end_month, start_week_offset=0):
+def build_header_layout(start_year, start_month, end_year, end_month):
     """
-    col=6부터 헤더 레이아웃 생성.
-    start_week_offset: 시작월에서 건너뛸 주 수 (0-indexed).
-    col6 = 시작일이 속한 주, SHIFT=0으로 간트와 1:1 대응.
+    col=6부터 시작월 1주 ~ end_month까지 헤더 레이아웃 생성.
+    header는 항상 시작월 1주부터 표기.
+    간트 색칠 시작 위치는 SHIFT(=시작주 0-indexed)로 별도 제어.
     """
     col, layout = GANTT_COL_START, []
     cur_y, cur_m = start_year, start_month
-    first_month = True
     while (cur_y, cur_m) <= (end_year, end_month):
         wc = get_week_count(cur_y, cur_m)
-        w_start = (start_week_offset + 1) if first_month else 1
-        first_month = False
-        for w in range(w_start, wc + 1):
+        for w in range(1, wc + 1):
             layout.append({
                 'col': col, 'year': cur_y, 'month': cur_m, 'week': w,
-                'is_month_start': (w == w_start),
-                'is_month_end': (w == wc),
+                'is_month_start': w == 1, 'is_month_end': w == wc,
             })
             col += 1
         cur_y, cur_m = next_ym(cur_y, cur_m)
@@ -107,14 +103,14 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     start_year   = sd.year
     start_month  = sd.month
 
-    # 시작일이 속한 주차 계산 → start_week_offset(header용), SHIFT=0(간트용)
-    # header col6 = 시작주부터, 간트는 SHIFT=0으로 템플릿 col 그대로 사용
+    # SHIFT = 시작일이 속한 주차 (0-indexed)
+    # header는 항상 시작월 1주부터, 간트 색칠은 SHIFT만큼 오른쪽으로 이동
+    # 예) 5월 18일 → SHIFT=2 → header col6=5월1주, 간트 col8(5월3주)부터 색칠
     first_day_of_month = sd.replace(day=1)
     days_to_monday = (7 - first_day_of_month.weekday()) % 7
     first_monday = (first_day_of_month if days_to_monday == 0
                     else first_day_of_month + timedelta(days=days_to_monday))
-    start_week_offset = (sd - first_monday).days // 7 if sd >= first_monday else 0
-    SHIFT = 0
+    SHIFT = (sd - first_monday).days // 7 if sd >= first_monday else 0
 
     med    = Side(border_style="medium")
     thin   = Side(border_style="thin")
@@ -200,7 +196,7 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             c.border = Border()
 
     # ── 헤더 레이아웃 생성 ────────────────────────────────────────────────────
-    header_layout = build_header_layout(start_year, start_month, end_year, end_month, start_week_offset)
+    header_layout = build_header_layout(start_year, start_month, end_year, end_month)
 
     # 서식 참조 (원본 헤더 셀)
     ref3 = ws_src.cell(HEADER_ROW_YEAR,  GANTT_COL_START)
