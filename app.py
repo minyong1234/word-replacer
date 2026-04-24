@@ -12,56 +12,32 @@ app = Flask(__name__)
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.xlsx")
 
-ORIG_BASE_COL  = 6
-ORIG_R7_START  = 8
-ORIG_R14_START = 17
-DEL_START      = 6
-DEL_COUNT      = 12
+# ── 템플릿 고정 상수 ──────────────────────────────────────────────────────────
+GANTT_ROW_START  = 6    # 간트 시작 행
+GANTT_ROW_END    = 22   # 간트 끝 행 (취약점 자체점검 포함)
+GANTT_COL_START  = 6    # 간트 시작 열 (F열)
+HEADER_ROW_YEAR  = 3    # 연도 헤더 행
+HEADER_ROW_MONTH = 4    # 월 헤더 행
+HEADER_ROW_WEEK  = 5    # 주 헤더 행
+VULN_ROW         = 22   # 취약점 자체점검 행
+LAST_MS_ROW      = 21   # 마지막 마일스톤 행
 
-ORIG_GANTT = {
-    7:  [(8,5,0.8)],
-    8:  [(c,5,0.8) for c in range(9,17)],
-    9:  [(c,5,0.8) for c in range(9,17)],
-    10: [(c,5,0.8) for c in range(9,17)],
-    11: [(17,5,0.8),(20,5,0.8)],
-    12: [(17,9,0.8),(20,9,0.8)],
-    13: [(17,9,0.8),(20,9,0.8)],
-    14: [(17,5,0.8)],
-    15: [(c,2,-0.1) for c in range(18,22)],
-    16: [(22,5,0.8)],
-    17: [(c,2,-0.1) for c in range(23,27)],
-    18: [(27,5,0.8)],
-    19: [(c,2,-0.1) for c in range(28,40)],
-    20: [(40,5,0.8)],
-    21: [(c,2,-0.1) for c in range(41,45)],
-    22: [(45,5,0.8)],
-    23: [(46,5,0.8)],
-}
+# 템플릿 기준: F열(col6) = 4월 1주
+TMPL_START_MONTH = 4
+TMPL_GANTT_START_COL = 6  # 템플릿에서 간트 첫 컬럼
 
-ORIG_R24 = {
-    21:'rgb',22:'theme',23:'theme',24:'theme',25:'theme',
-    26:'rgb',27:'theme',28:'theme',29:'theme',30:'theme',
-    31:'rgb',32:'theme',33:'theme',34:'theme',35:'theme',
-    36:'theme',37:'theme',38:'theme',39:'theme',40:'theme',
-    41:'theme',42:'theme',43:'theme',
-    44:'rgb',45:'theme',46:'theme',47:'theme',48:'theme',
-    49:'rgb',50:'rgb',
-}
-
+# ── 헬퍼 함수 ────────────────────────────────────────────────────────────────
 def is_colored(f):
-    if f.fill_type != 'solid': return False
+    if not f or f.fill_type != 'solid': return False
     ft = f.fgColor.type
     if ft == 'theme' and f.fgColor.theme != 0: return True
     if ft == 'rgb':
-        try: return f.fgColor.rgb not in ('00000000','FFFFFFFF','00FFFFFF')
+        try: return f.fgColor.rgb not in ('00000000', 'FFFFFFFF', '00FFFFFF')
         except: pass
     return False
 
 def get_week_count(year, month):
-    """
-    해당 월의 첫 번째 월요일이 있는 주 = 1주,
-    마지막 날이 속한 주 = 마지막 주 (최대 5주)
-    """
+    """첫 번째 월요일이 있는 주=1주, 마지막 날이 속한 주=마지막 주 (최대 5주)"""
     first_day = date(year, month, 1)
     last_day  = date(year, month, calendar.monthrange(year, month)[1])
     days_to_monday = (7 - first_day.weekday()) % 7
@@ -69,28 +45,41 @@ def get_week_count(year, month):
     if first_monday > last_day:
         return 0
     last_monday = last_day - timedelta(days=last_day.weekday())
-    count = (last_monday - first_monday).days // 7 + 1
-    return min(count, 5)
+    return min((last_monday - first_monday).days // 7 + 1, 5)
 
 def next_ym(year, month):
     return (year + 1, 1) if month == 12 else (year, month + 1)
 
-def col_to_ym(col_after_del, start_year, start_month):
-    """삭제 후 기준 컬럼 번호 → (year, month) 반환"""
-    c = 6
+def scan_gantt(ws_src):
+    """템플릿에서 색칠된 셀을 자동 스캔 → {row: [col, ...]}"""
+    gantt = {}
+    for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
+        for col in range(GANTT_COL_START, ws_src.max_column + 1):
+            c = ws_src.cell(rn, col)
+            if isinstance(c, MergedCell): continue
+            if is_colored(c.fill):
+                gantt.setdefault(rn, []).append(col)
+    return gantt
+
+def build_col_map(start_year, start_month):
+    """
+    실제 시작월 기준으로 col=6부터 (year, month) 매핑 생성.
+    최대 36달치 미리 계산.
+    """
+    col = GANTT_COL_START
+    mapping = {}  # col → (year, month)
     cur_y, cur_m = start_year, start_month
     for _ in range(36):
         wc = get_week_count(cur_y, cur_m)
         for _ in range(wc):
-            if c == col_after_del:
-                return cur_y, cur_m
-            c += 1
+            mapping[col] = (cur_y, cur_m)
+            col += 1
         cur_y, cur_m = next_ym(cur_y, cur_m)
-    return start_year, 12
+    return mapping
 
 def build_header_layout(start_year, start_month, end_year, end_month):
-    col    = 6
-    layout = []
+    """col=6부터 end_month까지 헤더 레이아웃 생성"""
+    col, layout = GANTT_COL_START, []
     cur_y, cur_m = start_year, start_month
     while (cur_y, cur_m) <= (end_year, end_month):
         wc = get_week_count(cur_y, cur_m)
@@ -105,13 +94,26 @@ def build_header_layout(start_year, start_month, end_year, end_month):
 
 
 def generate_wbs(client_name, start_date_str, include_vuln_self):
-    sd            = date.fromisoformat(start_date_str)
-    start_year    = sd.year
-    start_month   = sd.month
-    week_of_month = (sd.day - 1) // 7
+    sd           = date.fromisoformat(start_date_str)
+    start_year   = sd.year
+    start_month  = sd.month
 
-    orig_start_col = ORIG_BASE_COL + (start_month - 1) * 4 + week_of_month
-    SHIFT          = orig_start_col - ORIG_R7_START
+    # 템플릿 기준 shift 계산
+    # 템플릿: col6 = 4월 1주 (TMPL_START_MONTH=4)
+    # 실제 시작월의 col6 대응 원본 컬럼을 계산해야 함
+    # 원본 템플릿에서 start_month의 첫 컬럼 = col6 + (start_month - TMPL_START_MONTH) * 평균주수
+    # 실제로는 주수가 달마다 다르므로 직접 계산
+    # 템플릿 기준 col 계산: 4월=col6, 이후 월별 실제 주수만큼 증가 (템플릿 연도=2026 기준)
+    TMPL_YEAR = 2026
+    tmpl_col = GANTT_COL_START
+    for m in range(TMPL_START_MONTH, start_month):
+        tmpl_col += get_week_count(TMPL_YEAR, m)
+    # tmpl_col = 템플릿에서 start_month 1주에 해당하는 컬럼
+    # 사용자 시작일의 주차 offset
+    week_of_month = (sd.day - 1) // 7
+    orig_start_col = tmpl_col + week_of_month
+    # SHIFT = 실제 시작 컬럼 - 템플릿 간트 시작 컬럼
+    SHIFT = orig_start_col - GANTT_COL_START
 
     med    = Side(border_style="medium")
     thin   = Side(border_style="thin")
@@ -129,59 +131,55 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             if cell.value and isinstance(cell.value, str) and "고객사명" in cell.value:
                 cell.value = cell.value.replace("고객사명", client_name)
 
+    # ── 간트 색상 스캔 (템플릿 자동 인식) ────────────────────────────────────
+    gantt = scan_gantt(ws_src)
+
     # ── 간트 초기화 ───────────────────────────────────────────────────────────
-    for rn in range(7, 25):
-        for col in range(6, 73):
+    for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
+        for col in range(GANTT_COL_START, ws.max_column + 1):
             c = ws.cell(rn, col)
             if isinstance(c, MergedCell): continue
             try:
                 if is_colored(c.fill): c.fill = PatternFill(fill_type=None)
             except: pass
 
-    # ── 간트 shift ────────────────────────────────────────────────────────────
-    for rn, cells in ORIG_GANTT.items():
-        for (oc, _, __) in cells:
+    # ── 간트 shift 적용 ───────────────────────────────────────────────────────
+    for rn, cols in gantt.items():
+        if rn == VULN_ROW: continue  # 취약점은 별도 처리
+        for oc in cols:
             new_col = oc + SHIFT
-            if new_col < 1: continue
+            if new_col < GANTT_COL_START: continue
             target = ws.cell(rn, new_col)
             if not isinstance(target, MergedCell):
                 target.fill = copy.copy(ws_src.cell(rn, oc).fill)
 
-    # ── Row24 취약점 ──────────────────────────────────────────────────────────
-    new_r14  = ORIG_R14_START + SHIFT
-    adjust   = min(ORIG_R24) - ORIG_R14_START
-    src_yell = ws_src.cell(24, 21)
-    src_blue = ws_src.cell(24, 22)
-    if include_vuln_self:
-        for oc, ftype in ORIG_R24.items():
-            new_col = new_r14 + (oc - ORIG_R14_START - adjust)
-            if new_col < 1: continue
-            c = ws.cell(24, new_col)
-            if isinstance(c, MergedCell): continue
-            c.fill = copy.copy(src_yell.fill if ftype == 'rgb' else src_blue.fill)
+    # ── 취약점 자체점검 행 (22행) shift ──────────────────────────────────────
+    if include_vuln_self and VULN_ROW in gantt:
+        for oc in gantt[VULN_ROW]:
+            new_col = oc + SHIFT
+            if new_col < GANTT_COL_START: continue
+            target = ws.cell(VULN_ROW, new_col)
+            if not isinstance(target, MergedCell):
+                target.fill = copy.copy(ws_src.cell(VULN_ROW, oc).fill)
 
-    # ── 23행 마지막 마일스톤 컬럼 → 실제 월 파악 ─────────────────────────────
-    last_ms_col_pre  = 46 + SHIFT
-    last_ms_col_post = last_ms_col_pre - DEL_COUNT if last_ms_col_pre >= DEL_START + DEL_COUNT else last_ms_col_pre
+    # ── 마지막 마일스톤 컬럼 → 실제 (year, month) 파악 ──────────────────────
+    last_ms_orig_col = max(gantt.get(LAST_MS_ROW, [GANTT_COL_START]))
+    last_ms_col      = last_ms_orig_col + SHIFT
+    col_map          = build_col_map(start_year, start_month)
+    last_ms_ym       = col_map.get(last_ms_col, (start_year, 12))
+    end_year, end_month = next_ym(*last_ms_ym)  # 마지막 마일스톤 월 + 1
 
     # ── 병합 완전 해제 ────────────────────────────────────────────────────────
     for mr in [str(m) for m in ws.merged_cells.ranges]:
         ws.unmerge_cells(mr)
 
-    # ── 컬럼 삭제 (F~Q, 12개) — 헤더 쓰기 전에 먼저 삭제 ────────────────────
-    ws.delete_cols(DEL_START, DEL_COUNT)
-
-    # ── 마지막 마일스톤 월 파악 후 +1달 ─────────────────────────────────────
-    last_ms_year, last_ms_month = col_to_ym(last_ms_col_post, start_year, start_month)
-    end_year, end_month = next_ym(last_ms_year, last_ms_month)
-
     # ── 헤더 레이아웃 생성 ────────────────────────────────────────────────────
     header_layout = build_header_layout(start_year, start_month, end_year, end_month)
 
-    # 서식 참조 (원본 54번 컬럼)
-    ref4 = ws_src.cell(4, 54)
-    ref5 = ws_src.cell(5, 54)
-    ref6 = ws_src.cell(6, 54)
+    # 서식 참조 (원본 헤더 셀)
+    ref3 = ws_src.cell(HEADER_ROW_YEAR,  GANTT_COL_START)
+    ref4 = ws_src.cell(HEADER_ROW_MONTH, GANTT_COL_START)
+    ref5 = ws_src.cell(HEADER_ROW_WEEK,  GANTT_COL_START)
 
     # 연도 구간 파악
     year_groups = {}
@@ -192,81 +190,80 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
         else:
             year_groups[y]['end'] = item['col']
 
-    # 원본 템플릿에서 7~23행의 행별 top/bottom 테두리 패턴 수집 (col 무관하게 행 고유)
+    # 행별 top/bottom 테두리 참조 (원본 간트 영역 중간 컬럼)
+    ref_border_col = GANTT_COL_START + 5
     row_borders = {}
-    for rn in range(7, 25):
-        src_border = ws_src.cell(rn, 20).border  # 임의의 간트 영역 컬럼 참조
-        row_borders[rn] = {'top': src_border.top, 'bottom': src_border.bottom}
+    for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
+        b = ws_src.cell(rn, ref_border_col).border
+        row_borders[rn] = {'top': b.top, 'bottom': b.bottom}
 
-    # ── 4/5/6행 및 7~24행 헤더 작성 ─────────────────────────────────────────
+    # ── 헤더 작성 ─────────────────────────────────────────────────────────────
     for item in header_layout:
         col           = item['col']
         is_year_start = (col == year_groups[item['year']]['start'])
         is_year_end   = (col == year_groups[item['year']]['end'])
 
-        # 6행: 주
-        c6 = ws.cell(6, col)
-        c6.value     = f"{item['week']}주"
-        c6.font      = copy.copy(ref6.font)
-        c6.fill      = copy.copy(ref6.fill)
-        c6.alignment = copy.copy(ref6.alignment)
-        c6.border    = Border(left=thin, right=thin, top=med, bottom=med)
-
-        # 5행: 월 (월 첫 컬럼에만 값)
-        c5 = ws.cell(5, col)
-        c5.value     = f"{item['month']}월" if item['is_month_start'] else None
+        # 5행: 주
+        c5 = ws.cell(HEADER_ROW_WEEK, col)
+        c5.value     = f"{item['week']}주"
         c5.font      = copy.copy(ref5.font)
         c5.fill      = copy.copy(ref5.fill)
         c5.alignment = copy.copy(ref5.alignment)
-        c5.border    = Border(
-            left   = med if item['is_month_start'] else none_s,
-            right  = med if item['is_month_end']   else none_s,
-            top    = med, bottom = med,
-        )
+        c5.border    = Border(left=thin, right=thin, top=med, bottom=med)
 
-        # 4행: 연도 (연도 첫 컬럼에만 값)
-        c4 = ws.cell(4, col)
-        c4.value     = f"{item['year']}년" if is_year_start else None
+        # 4행: 월
+        c4 = ws.cell(HEADER_ROW_MONTH, col)
+        c4.value     = f"{item['month']}월" if item['is_month_start'] else None
         c4.font      = copy.copy(ref4.font)
         c4.fill      = copy.copy(ref4.fill)
         c4.alignment = copy.copy(ref4.alignment)
         c4.border    = Border(
-            left   = med if is_year_start else none_s,
-            right  = med if is_year_end   else none_s,
-            top    = med, bottom = none_s,
+            left   = med if item['is_month_start'] else none_s,
+            right  = med if item['is_month_end']   else none_s,
+            top=med, bottom=med,
         )
 
-        # 7~24행: 모든 테두리 (상하좌우)
-        for rn in range(7, 25):
-            # 월 경계(첫주/끝주)는 좌우 medium, 나머지는 thin
-            left_border  = med if item['is_month_start'] else thin
-            right_border = med if item['is_month_end']   else thin
-            # 행별 top/bottom은 원본 패턴 유지
+        # 3행: 연도
+        c3 = ws.cell(HEADER_ROW_YEAR, col)
+        c3.value     = f"{item['year']}년" if is_year_start else None
+        c3.font      = copy.copy(ref3.font)
+        c3.fill      = copy.copy(ref3.fill)
+        c3.alignment = copy.copy(ref3.alignment)
+        c3.border    = Border(
+            left   = med if is_year_start else none_s,
+            right  = med if is_year_end   else none_s,
+            top=med, bottom=none_s,
+        )
+
+        # 간트 행: thin 테두리
+        for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
             rb = row_borders.get(rn, {'top': thin, 'bottom': thin})
             ws.cell(rn, col).border = Border(
-                left=left_border, right=right_border,
+                left=thin, right=thin,
                 top=rb['top'], bottom=rb['bottom'],
             )
 
         ws.column_dimensions[get_column_letter(col)].width = 4.9
 
-    # ── F4 서식 복원 ──────────────────────────────────────────────────────────
-    f4 = ws.cell(4, 6)
-    pf = PatternFill(fill_type="solid")
-    pf.fgColor.type = "theme"; pf.fgColor.theme = 2; pf.fgColor.tint = -0.1
-    f4.fill      = pf
-    f4.font      = Font(name="맑은 고딕", bold=True, size=15, color="FF000000")
-    f4.alignment = Alignment(horizontal="center", vertical="center")
-    f4.border    = Border(left=med, right=med, top=med, bottom=none_s)
-    f4.value     = f"{start_year}년"
+    # ── 3행 제목 셀 서식 복원 (B3:E4) ────────────────────────────────────────
+    title_cell = ws.cell(HEADER_ROW_YEAR, 2)
+    title_cell.value = "간편등급 CSAP 컨설팅 일정"
+    src_title = ws_src.cell(HEADER_ROW_YEAR, 2)
+    title_cell.font      = copy.copy(src_title.font)
+    title_cell.fill      = copy.copy(src_title.fill)
+    title_cell.alignment = copy.copy(src_title.alignment)
+    title_cell.border    = copy.copy(src_title.border)
 
     # ── 병합 재설정 ───────────────────────────────────────────────────────────
-    def sm(nsc, sr, nec, er):
-        if nsc and nec and nsc <= nec:
-            try: ws.merge_cells(start_row=sr, start_column=nsc, end_row=er, end_column=nec)
+    def sm(sc, sr, ec, er):
+        if sc <= ec and sr <= er:
+            try: ws.merge_cells(start_row=sr, start_column=sc, end_row=er, end_column=ec)
             except: pass
 
-    # 5행: 월별 병합
+    # 제목 병합 (B3:E4)
+    sm(2, HEADER_ROW_YEAR, 5, HEADER_ROW_MONTH)
+
+    # 4행: 월별 병합
     month_groups = {}
     for item in header_layout:
         key = (item['year'], item['month'])
@@ -276,18 +273,18 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             month_groups[key]['end'] = item['col']
     for key, cols in month_groups.items():
         if cols['start'] < cols['end']:
-            sm(cols['start'], 5, cols['end'], 5)
+            sm(cols['start'], HEADER_ROW_MONTH, cols['end'], HEADER_ROW_MONTH)
 
-    # 4행: 연도별 병합
+    # 3행: 연도별 병합
     for y, cols in year_groups.items():
         if cols['start'] < cols['end']:
-            sm(cols['start'], 4, cols['end'], 4)
+            sm(cols['start'], HEADER_ROW_YEAR, cols['end'], HEADER_ROW_YEAR)
 
-    # 좌측 항목 영역 고정 병합
+    # 좌측 항목 영역 고정 병합 (원본 그대로)
     for (sc, sr, ec, er) in [
-        (2, 4, 5, 5), (2, 8, 2, 10), (2, 11, 2, 13),
-        (3, 8, 3, 10), (3, 11, 3, 13), (3, 15, 3, 18), (3, 20, 3, 22),
-        (4, 9, 4, 10), (4, 12, 4, 13)
+        (2, 7, 2, 9), (3, 7, 3, 9), (4, 8, 4, 9),
+        (2, 10, 2, 12), (3, 10, 3, 12), (4, 11, 4, 12),
+        (3, 14, 3, 17), (3, 19, 3, 20),
     ]:
         try: ws.merge_cells(start_row=sr, start_column=sc, end_row=er, end_column=ec)
         except: pass
@@ -302,11 +299,12 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
                                  italic=f.italic, underline=f.underline,
                                  strike=f.strike, color="FF000000")
 
-    # ── 취약점 자체점검 미포함 ────────────────────────────────────────────────
+    # ── 취약점 자체점검 미포함 시 행 삭제 ────────────────────────────────────
     if not include_vuln_self:
-        ws.delete_rows(24, 1)
-        for col in range(2, 6):
-            c = ws.cell(23, col); b = c.border
+        ws.delete_rows(VULN_ROW, 1)
+        for col in range(2, GANTT_COL_START):
+            c = ws.cell(VULN_ROW - 1, col)
+            b = c.border
             c.border = Border(left=b.left, right=b.right, top=b.top, bottom=med)
 
     safe_name = re.sub(r'[\\/:*?"<>|]', '_', client_name)
