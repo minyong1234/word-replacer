@@ -137,7 +137,7 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     # ── 간트 색상 스캔 (템플릿 자동 인식) ────────────────────────────────────
     gantt = scan_gantt(ws_src)
 
-    # ── 간트 초기화 ───────────────────────────────────────────────────────────
+    # ── 간트 초기화 (색상 + 테두리 전체 클리어) ─────────────────────────────
     for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
         for col in range(GANTT_COL_START, ws.max_column + 1):
             c = ws.cell(rn, col)
@@ -145,6 +145,7 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             try:
                 if is_colored(c.fill): c.fill = PatternFill(fill_type=None)
             except: pass
+            c.border = Border()  # 테두리도 전부 클리어
 
     # ── 간트 shift 적용 ───────────────────────────────────────────────────────
     for rn, cols in gantt.items():
