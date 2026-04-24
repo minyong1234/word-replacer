@@ -6,231 +6,93 @@
   <title>CSAP 컨설팅 일정 생성기</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #F7F7F5;
-      --surface:  #FFFFFF;
-      --border:   #E2E0D8;
-      --border-md:#C8C5BB;
-      --text:     #1A1A18;
-      --muted:    #6B6960;
-      --accent:   #1E4D8C;
-      --accent-lt:#EBF0F8;
-      --accent-hv:#163A6A;
-      --success:  #1D6B3E;
-      --success-lt:#E8F5EE;
-      --radius:   10px;
-      --shadow:   0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
+      --bg:#F7F7F5; --surface:#FFFFFF; --border:#E2E0D8; --border-md:#C8C5BB;
+      --text:#1A1A18; --muted:#6B6960; --accent:#1E4D8C; --accent-lt:#EBF0F8;
+      --accent-hv:#163A6A; --success:#1D6B3E; --success-lt:#E8F5EE; --radius:10px;
+      --shadow:0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
     }
+    body { font-family:"맑은 고딕","Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+      background:var(--bg); color:var(--text); min-height:100vh;
+      display:flex; align-items:center; justify-content:center; padding:2rem 1rem; }
+    .card { background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+      width:100%; max-width:480px; overflow:hidden; }
+    .card-header { background:var(--accent); padding:1.75rem 2rem 1.5rem; }
+    .card-header .label { font-size:11px; font-weight:600; letter-spacing:.12em;
+      color:rgba(255,255,255,.6); text-transform:uppercase; margin-bottom:.4rem; }
+    .card-header h1 { font-size:1.35rem; font-weight:700; color:#fff; line-height:1.3; }
+    .card-body { padding:1.75rem 2rem; }
+    .field { margin-bottom:1.25rem; }
+    .field label { display:block; font-size:13px; font-weight:600; color:var(--muted);
+      margin-bottom:.45rem; letter-spacing:.02em; }
+    .field input[type="text"], .field input[type="date"] {
+      width:100%; padding:.65rem .85rem; font-size:14px; font-family:inherit;
+      border:1.5px solid var(--border); border-radius:7px; background:var(--bg);
+      color:var(--text); outline:none; transition:border-color .15s; }
+    .field input:focus { border-color:var(--accent); background:#fff; }
 
-    body {
-      font-family: "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem 1rem;
-    }
+    /* 등급 선택 */
+    .grade-select { display:flex; gap:.6rem; margin-bottom:1.25rem; }
+    .grade-btn {
+      flex:1; padding:.65rem; font-size:14px; font-weight:600; font-family:inherit;
+      border:1.5px solid var(--border); border-radius:7px; background:var(--bg);
+      color:var(--muted); cursor:pointer; transition:all .15s; text-align:center; }
+    .grade-btn.active {
+      border-color:var(--accent); background:var(--accent-lt);
+      color:var(--accent); }
 
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      width: 100%;
-      max-width: 480px;
-      overflow: hidden;
-    }
+    /* 취약점 토글 */
+    .toggle-field { margin-bottom:1.5rem; border:1.5px solid var(--border);
+      border-radius:8px; overflow:hidden; }
+    .toggle-header { display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1rem; cursor:pointer; background:var(--bg); user-select:none;
+      transition:background .12s; }
+    .toggle-header:hover { background:#EFEDE6; }
+    .toggle-left { display:flex; align-items:center; gap:.65rem; }
+    .toggle-icon { width:32px; height:32px; border-radius:7px; background:var(--accent-lt);
+      display:flex; align-items:center; justify-content:center; font-size:15px; }
+    .toggle-title { font-size:14px; font-weight:600; }
+    .toggle-sub { font-size:12px; color:var(--muted); margin-top:1px; }
+    .switch { position:relative; width:44px; height:24px; flex-shrink:0; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; background:var(--border-md);
+      border-radius:24px; cursor:pointer; transition:background .2s; }
+    .slider::before { content:""; position:absolute; width:18px; height:18px;
+      left:3px; top:3px; background:#fff; border-radius:50%;
+      transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+    .switch input:checked + .slider { background:var(--accent); }
+    .switch input:checked + .slider::before { transform:translateX(20px); }
+    .toggle-detail { padding:.75rem 1rem .9rem; font-size:12.5px; color:var(--muted);
+      line-height:1.6; border-top:1px solid var(--border); background:#fff; }
+    .toggle-detail .on  { display:none; }
+    .toggle-detail .off { display:block; }
+    .toggle-field.active .toggle-detail .on  { display:block; }
+    .toggle-field.active .toggle-detail .off { display:none; }
 
-    .card-header {
-      background: var(--accent);
-      padding: 1.75rem 2rem 1.5rem;
-    }
-    .card-header .label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .12em;
-      color: rgba(255,255,255,.6);
-      text-transform: uppercase;
-      margin-bottom: .4rem;
-    }
-    .card-header h1 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: #fff;
-      line-height: 1.3;
-    }
-
-    .card-body { padding: 1.75rem 2rem; }
-
-    .field { margin-bottom: 1.25rem; }
-    .field label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--muted);
-      margin-bottom: .45rem;
-      letter-spacing: .02em;
-    }
-    .field input[type="text"],
-    .field input[type="date"] {
-      width: 100%;
-      padding: .65rem .85rem;
-      font-size: 14px;
-      font-family: inherit;
-      border: 1.5px solid var(--border);
-      border-radius: 7px;
-      background: var(--bg);
-      color: var(--text);
-      outline: none;
-      transition: border-color .15s;
-    }
-    .field input:focus {
-      border-color: var(--accent);
-      background: #fff;
-    }
-
-    /* 취약점 자체점검 토글 */
-    .toggle-field {
-      margin-bottom: 1.5rem;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    .toggle-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .85rem 1rem;
-      cursor: pointer;
-      background: var(--bg);
-      user-select: none;
-      transition: background .12s;
-    }
-    .toggle-header:hover { background: #EFEDE6; }
-    .toggle-left { display: flex; align-items: center; gap: .65rem; }
-    .toggle-icon {
-      width: 32px; height: 32px;
-      border-radius: 7px;
-      background: var(--accent-lt);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 15px;
-    }
-    .toggle-title { font-size: 14px; font-weight: 600; }
-    .toggle-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-
-    /* 스위치 */
-    .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; inset: 0;
-      background: var(--border-md);
-      border-radius: 24px;
-      cursor: pointer;
-      transition: background .2s;
-    }
-    .slider::before {
-      content: "";
-      position: absolute;
-      width: 18px; height: 18px;
-      left: 3px; top: 3px;
-      background: #fff;
-      border-radius: 50%;
-      transition: transform .2s;
-      box-shadow: 0 1px 3px rgba(0,0,0,.2);
-    }
-    .switch input:checked + .slider { background: var(--accent); }
-    .switch input:checked + .slider::before { transform: translateX(20px); }
-
-    .toggle-detail {
-      padding: .75rem 1rem .9rem;
-      font-size: 12.5px;
-      color: var(--muted);
-      line-height: 1.6;
-      border-top: 1px solid var(--border);
-      background: #fff;
-    }
-    .toggle-detail .on  { display: none; }
-    .toggle-detail .off { display: block; }
-    .toggle-field.active .toggle-detail .on  { display: block; }
-    .toggle-field.active .toggle-detail .off { display: none; }
-
-    /* 버튼 */
-    .btn-generate {
-      width: 100%;
-      padding: .85rem;
-      font-size: 15px;
-      font-weight: 700;
-      font-family: inherit;
-      color: #fff;
-      background: var(--accent);
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background .15s, transform .1s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: .5rem;
-    }
-    .btn-generate:hover  { background: var(--accent-hv); }
-    .btn-generate:active { transform: scale(.99); }
-    .btn-generate:disabled { background: var(--border-md); cursor: not-allowed; }
-
-    .spinner {
-      width: 16px; height: 16px;
-      border: 2.5px solid rgba(255,255,255,.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .65s linear infinite;
-      display: none;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* 알림 */
-    .alert {
-      display: none;
-      margin-top: 1rem;
-      padding: .75rem 1rem;
-      border-radius: 7px;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    .alert.error   { background: #FEF0EE; color: #B03020; border: 1px solid #F5C4BB; }
-    .alert.success { background: var(--success-lt); color: var(--success); border: 1px solid #B5DEC8; }
-
-    /* 구분선 */
-    .divider {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 1.5rem 0;
-    }
-
-    /* 미리보기 요약 */
-    .summary {
-      display: none;
-      gap: .5rem;
-      margin-bottom: 1.25rem;
-    }
-    .summary.visible { display: flex; flex-wrap: wrap; }
-    .chip {
-      font-size: 12px;
-      padding: .3rem .7rem;
-      border-radius: 99px;
-      background: var(--accent-lt);
-      color: var(--accent);
-      font-weight: 600;
-    }
-
-    .footer-note {
-      text-align: center;
-      font-size: 11.5px;
-      color: var(--muted);
-      margin-top: 1rem;
-      line-height: 1.6;
-    }
+    .btn-generate { width:100%; padding:.85rem; font-size:15px; font-weight:700;
+      font-family:inherit; color:#fff; background:var(--accent); border:none;
+      border-radius:8px; cursor:pointer; transition:background .15s, transform .1s;
+      display:flex; align-items:center; justify-content:center; gap:.5rem; }
+    .btn-generate:hover  { background:var(--accent-hv); }
+    .btn-generate:active { transform:scale(.99); }
+    .btn-generate:disabled { background:var(--border-md); cursor:not-allowed; }
+    .spinner { width:16px; height:16px; border:2.5px solid rgba(255,255,255,.35);
+      border-top-color:#fff; border-radius:50%;
+      animation:spin .65s linear infinite; display:none; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .alert { display:none; margin-top:1rem; padding:.75rem 1rem;
+      border-radius:7px; font-size:13px; font-weight:500; }
+    .alert.error   { background:#FEF0EE; color:#B03020; border:1px solid #F5C4BB; }
+    .alert.success { background:var(--success-lt); color:var(--success); border:1px solid #B5DEC8; }
+    .summary { display:none; gap:.5rem; margin-bottom:1.25rem; }
+    .summary.visible { display:flex; flex-wrap:wrap; }
+    .chip { font-size:12px; padding:.3rem .7rem; border-radius:99px;
+      background:var(--accent-lt); color:var(--accent); font-weight:600; }
+    .footer-note { text-align:center; font-size:11.5px; color:var(--muted);
+      margin-top:1rem; line-height:1.6; }
+    .field-label { font-size:13px; font-weight:600; color:var(--muted);
+      margin-bottom:.45rem; letter-spacing:.02em; display:block; }
   </style>
 </head>
 <body>
@@ -239,8 +101,17 @@
     <div class="label">Didim · CSAP 인증 컨설팅</div>
     <h1>일정 WBS 생성기</h1>
   </div>
-
   <div class="card-body">
+
+    <!-- 등급 선택 -->
+    <div class="field">
+      <span class="field-label">컨설팅 등급</span>
+      <div class="grade-select">
+        <button class="grade-btn active" id="gradeSimple" onclick="selectGrade('간편등급')">간편등급</button>
+        <button class="grade-btn" id="gradeStandard" onclick="selectGrade('표준등급')">표준등급</button>
+      </div>
+    </div>
+
     <div class="field">
       <label for="client_name">고객사명</label>
       <input type="text" id="client_name" placeholder="예) (주)ABC클라우드" autocomplete="off">
@@ -290,8 +161,16 @@
 </div>
 
 <script>
-  // 오늘 날짜 기본값
+  let selectedGrade = '간편등급';
+
   document.getElementById("start_date").value = new Date().toISOString().slice(0, 10);
+
+  function selectGrade(grade) {
+    selectedGrade = grade;
+    document.getElementById('gradeSimple').classList.toggle('active', grade === '간편등급');
+    document.getElementById('gradeStandard').classList.toggle('active', grade === '표준등급');
+    updateSummary();
+  }
 
   function toggleVuln() {
     const cb = document.getElementById("vulnCheck");
@@ -310,14 +189,12 @@
     const date   = document.getElementById("start_date").value;
     const vuln   = document.getElementById("vulnCheck").checked;
     const el     = document.getElementById("summary");
-
     if (!client && !date) { el.classList.remove("visible"); return; }
-
     let chips = [];
+    chips.push(selectedGrade);
     if (client) chips.push(client);
     if (date)   chips.push(date.replace(/-/g, "."));
     chips.push(vuln ? "취약점 자체점검 포함" : "취약점 자체점검 미포함");
-
     el.innerHTML = chips.map(t => `<span class="chip">${t}</span>`).join("");
     el.classList.add("visible");
   }
@@ -330,42 +207,33 @@
     const client = document.getElementById("client_name").value.trim();
     const date   = document.getElementById("start_date").value;
     const vuln   = document.getElementById("vulnCheck").checked;
-    const alert  = document.getElementById("alertBox");
-
-    alert.style.display = "none";
-
+    const alertEl = document.getElementById("alertBox");
+    alertEl.style.display = "none";
     if (!client) { showAlert("고객사명을 입력해주세요.", "error"); return; }
     if (!date)   { showAlert("시작일을 선택해주세요.", "error"); return; }
-
     setLoading(true);
-
     try {
       const fd = new FormData();
       fd.append("client_name", client);
       fd.append("start_date",  date);
       fd.append("include_vuln_self", vuln ? "true" : "false");
-
-      const res = await fetch("/wbs/generate", { method: "POST", body: fd });
-
+      fd.append("grade", selectedGrade);
+      const res = await fetch("/wbs/generate", { method:"POST", body:fd });
       if (!res.ok) {
         const err = await res.json();
         showAlert(err.error || "생성 중 오류가 발생했습니다.", "error");
         return;
       }
-
-      // 파일 다운로드
-      const blob = await res.blob();
+      const blob  = await res.blob();
       const disp  = res.headers.get("Content-Disposition") || "";
       const match = disp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
       let fname   = match ? decodeURIComponent(match[1]) : "CSAP_WBS.xlsx";
-
       const url = URL.createObjectURL(blob);
       const a   = document.createElement("a");
       a.href = url; a.download = fname;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
       showAlert("✓ 파일이 생성되었습니다.", "success");
     } catch (e) {
       showAlert("서버 연결에 실패했습니다.", "error");
@@ -378,16 +246,16 @@
     const btn  = document.getElementById("btnGenerate");
     const spin = document.getElementById("spinner");
     const txt  = document.getElementById("btnText");
-    btn.disabled      = on;
+    btn.disabled       = on;
     spin.style.display = on ? "block" : "none";
-    txt.textContent   = on ? "생성 중..." : "엑셀 파일 생성 및 다운로드";
+    txt.textContent    = on ? "생성 중..." : "엑셀 파일 생성 및 다운로드";
   }
 
   function showAlert(msg, type) {
     const el = document.getElementById("alertBox");
-    el.textContent    = msg;
-    el.className      = `alert ${type}`;
-    el.style.display  = "block";
+    el.textContent   = msg;
+    el.className     = `alert ${type}`;
+    el.style.display = "block";
   }
 </script>
 </body>
