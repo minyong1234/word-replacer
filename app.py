@@ -109,8 +109,11 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     for m in range(TMPL_START_MONTH, start_month):
         tmpl_col += get_week_count(TMPL_YEAR, m)
     # tmpl_col = 템플릿에서 start_month 1주에 해당하는 컬럼
-    # 사용자 시작일의 주차 offset
-    week_of_month = (sd.day - 1) // 7
+    # 사용자 시작일의 주차 offset (첫 번째 월요일 기준)
+    first_day = sd.replace(day=1)
+    days_to_monday = (7 - first_day.weekday()) % 7
+    first_monday = first_day if days_to_monday == 0 else first_day + timedelta(days=days_to_monday)
+    week_of_month = (sd - first_monday).days // 7 if sd >= first_monday else 0
     orig_start_col = tmpl_col + week_of_month
     # SHIFT = 실제 시작 컬럼 - 템플릿 간트 시작 컬럼
     SHIFT = orig_start_col - GANTT_COL_START
