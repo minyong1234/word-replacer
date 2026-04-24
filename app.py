@@ -262,9 +262,11 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
         # 간트 행: thin 테두리
         for rn in range(GANTT_ROW_START, GANTT_ROW_END + 1):
             rb = row_borders.get(rn, {'top': thin, 'bottom': thin})
+            # 취약점 자체점검 포함 시 22행 하단은 thin (굵은 테두리 제거)
+            bottom = thin if (include_vuln_self and rn == VULN_ROW) else rb['bottom']
             ws.cell(rn, col).border = Border(
                 left=thin, right=thin,
-                top=rb['top'], bottom=rb['bottom'],
+                top=rb['top'], bottom=bottom,
             )
 
         ws.column_dimensions[get_column_letter(col)].width = 4.9
