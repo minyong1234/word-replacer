@@ -166,11 +166,26 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
                 target.fill = copy.copy(ws_src.cell(VULN_ROW, oc).fill)
 
     # ── 마지막 마일스톤 컬럼 → 실제 (year, month) 파악 ──────────────────────
+    # 템플릿 기준 col_map으로 orig_col의 월 파악 후 start_month offset 적용
     last_ms_orig_col = max(gantt.get(LAST_MS_ROW, [GANTT_COL_START]))
-    last_ms_col      = last_ms_orig_col + SHIFT
-    col_map          = build_col_map(start_year, start_month)
-    last_ms_ym       = col_map.get(last_ms_col, (start_year, 12))
-    end_year, end_month = next_ym(*last_ms_ym)  # 마지막 마일스톤 월 + 1
+    # 템플릿 기준 col → (year, month) 매핑
+    _tmpl_col = GANTT_COL_START
+    _tmpl_col_map = {}
+    _cur_y, _cur_m = TMPL_YEAR, TMPL_START_MONTH
+    for _ in range(36):
+        _wc = get_week_count(_cur_y, _cur_m)
+        for _w in range(1, _wc + 1):
+            _tmpl_col_map[_tmpl_col] = (_cur_y, _cur_m, _w)
+            _tmpl_col += 1
+        _cur_y, _cur_m = next_ym(_cur_y, _cur_m)
+    # 템플릿에서 last_ms_orig_col의 (월, 주) 파악
+    _tmpl_y, _tmpl_m, _tmpl_w = _tmpl_col_map.get(last_ms_orig_col, (TMPL_YEAR, 12, 1))
+    # 실제 연도/월: 템플릿 기준 월에서 start_month 차이만큼 이동
+    _month_offset = (_tmpl_m - TMPL_START_MONTH) + (_tmpl_y - TMPL_YEAR) * 12
+    _actual_months = (start_month - 1) + _month_offset
+    last_ms_actual_year  = start_year + _actual_months // 12
+    last_ms_actual_month = _actual_months % 12 + 1
+    end_year, end_month = next_ym(last_ms_actual_year, last_ms_actual_month)
 
     # ── 병합 완전 해제 ────────────────────────────────────────────────────────
     for mr in [str(m) for m in ws.merged_cells.ranges]:
