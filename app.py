@@ -4,7 +4,8 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.cell.cell import MergedCell
 from openpyxl.utils import get_column_letter
-import os, json, tempfile, zipfile, copy, io, re
+import os, json, tempfile, zipfile, copy, io, re, calendar
+from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
@@ -62,8 +63,42 @@ def is_colored(f):
         except: pass
     return False
 
+# ── 주차 계산 헬퍼 ────────────────────────────────────────────────────────────
+def get_week_count(year, month):
+    """매월 1일이 속한 주의 월요일을 1주 기준으로 해당 월의 주 수 반환 (최대 5주)"""
+    first_day = date(year, month, 1)
+    first_monday = first_day - timedelta(days=first_day.weekday())
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+    count = 0
+    week_start = first_monday
+    while week_start <= last_day and count < 5:
+        count += 1
+        week_start += timedelta(weeks=1)
+    return count
+
+def build_header_layout(start_year, start_month):
+    """
+    F열(col=6)부터 시작월~12월까지 각 컬럼의 (연도, 월, 주차) 정보를 반환.
+    반환: list of dict {col, year, month, week, is_month_start, is_month_end}
+    """
+    col = 6
+    layout = []
+    for month in range(start_month, 13):
+        wc = get_week_count(start_year, month)
+        for w in range(1, wc + 1):
+            layout.append({
+                'col': col,
+                'year': start_year,
+                'month': month,
+                'week': w,
+                'is_month_start': w == 1,
+                'is_month_end': w == wc,
+            })
+            col += 1
+    return layout
+
+
 def generate_wbs(client_name, start_date_str, include_vuln_self):
-    from datetime import date
     sd            = date.fromisoformat(start_date_str)
     start_year    = sd.year
     start_month   = sd.month
@@ -122,115 +157,128 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     for mr in [str(m) for m in ws.merged_cells.ranges]:
         ws.unmerge_cells(mr)
 
-    # BF(orig 58) 헤더 설정 (삭제 전)
-    ref54 = ws_src.cell(5, 54)
-    for rn, val in [(4,None),(5,"2월"),(6,"1주")]:
-        c = ws.cell(rn, 58)
-        if val: c.value = val
-        c.font=copy.copy(ref54.font); c.fill=copy.copy(ref54.fill)
-        c.alignment=copy.copy(ref54.alignment); c.border=copy.copy(ref54.border)
-    for rn in range(7, 25):
-        ws.cell(rn, 58).border = copy.copy(ws_src.cell(rn, 54).border)
+    # ── 헤더 레이아웃 생성 (시작월~12월) ─────────────────────────────────────
+    header_layout = build_header_layout(start_year, start_month)
+    last_col = header_layout[-1]['col'] if header_layout else 6
 
-    # 헤더값 설정 (삭제 전)
-    ws.cell(4, 54).value = f"{start_year+1}년"
-    for i, oc in enumerate([18,22,26,30,34,38,42,46,50,54,58]):
-        real_m = ((start_month + i - 1) % 12) + 1
-        ws.cell(5, oc).value = f"{real_m}월"
+    # 서식 참조용 원본 셀
+    ref4 = ws_src.cell(4, 54)
+    ref5 = ws_src.cell(5, 54)
+    ref6 = ws_src.cell(6, 54)
 
-    # 컬럼 삭제
-    ws.delete_cols(DEL_START, DEL_COUNT)
+    # 4행: 연도 / 5행: 월 / 6행: 주 설정
+    for item in header_layout:
+        col = item['col']
 
-    # extra 컬럼 (47~53)
-    m_feb = ((start_month + 9  - 1) % 12) + 1
-    m_mar = ((start_month + 10 - 1) % 12) + 1
-    extra = [
-        (47,f"{m_feb}월","2주",False,False),
-        (48,f"{m_feb}월","3주",False,False),
-        (49,f"{m_feb}월","4주",False,True),
-        (50,f"{m_mar}월","1주",True, False),
-        (51,f"{m_mar}월","2주",False,False),
-        (52,f"{m_mar}월","3주",False,False),
-        (53,f"{m_mar}월","4주",False,True),
-    ]
-    ref5=ws_src.cell(5,54); ref6=ws_src.cell(6,54); ref4=ws_src.cell(4,54)
-    for col, month, week, is_first, is_last in extra:
-        c6=ws.cell(6,col); c6.value=week
-        c6.font=copy.copy(ref6.font); c6.fill=copy.copy(ref6.fill)
-        c6.alignment=copy.copy(ref6.alignment); c6.border=copy.copy(ref6.border)
-        c5=ws.cell(5,col); c5.value=month if is_first else None
-        c5.font=copy.copy(ref5.font); c5.fill=copy.copy(ref5.fill)
-        c5.alignment=copy.copy(ref5.alignment)
-        c5.border=Border(
-            left=med if is_first else none_s,
-            right=med if (is_last or is_first) else none_s,
-            top=med, bottom=med)
-        c4=ws.cell(4,col)
-        c4.font=copy.copy(ref4.font); c4.fill=copy.copy(ref4.fill)
-        c4.alignment=copy.copy(ref4.alignment)
-        c4.border=Border(left=none_s,right=none_s,top=med,bottom=none_s)
-        for rn in range(7,25):
-            ws.cell(rn,col).border=copy.copy(ws_src.cell(rn,54).border)
-        ws.column_dimensions[get_column_letter(col)].width=4.9
+        # ── 6행: 주 ──
+        c6 = ws.cell(6, col)
+        c6.value = f"{item['week']}주"
+        c6.font      = copy.copy(ref6.font)
+        c6.fill      = copy.copy(ref6.fill)
+        c6.alignment = copy.copy(ref6.alignment)
+        c6.border    = copy.copy(ref6.border)
 
-    # 연도/월 대표셀 값 설정 (병합 전)
-    ws.cell(4, 6).value  = f"{start_year}년"
-    ws.cell(4, 42).value = f"{start_year+1}년"
-    ws.cell(5, 46).value = f"{m_feb}월"
-    ws.cell(5, 50).value = f"{m_mar}월"
+        # ── 5행: 월 (각 월의 첫 컬럼에만 값) ──
+        c5 = ws.cell(5, col)
+        c5.value = f"{item['month']}월" if item['is_month_start'] else None
+        c5.font      = copy.copy(ref5.font)
+        c5.fill      = copy.copy(ref5.fill)
+        c5.alignment = copy.copy(ref5.alignment)
+        c5.border = Border(
+            left   = med if item['is_month_start'] else none_s,
+            right  = med if item['is_month_end'] else none_s,
+            top    = med,
+            bottom = med,
+        )
 
-    # F4 서식 복원
+        # ── 4행: 연도 (각 연도의 첫 컬럼 = start_month의 첫 컬럼에만 값) ──
+        c4 = ws.cell(4, col)
+        c4.value = f"{item['year']}년" if item['is_month_start'] and item['month'] == start_month else None
+        c4.font      = copy.copy(ref4.font)
+        c4.fill      = copy.copy(ref4.fill)
+        c4.alignment = copy.copy(ref4.alignment)
+        c4.border = Border(
+            left   = none_s,
+            right  = none_s,
+            top    = med,
+            bottom = none_s,
+        )
+
+        # 7~24행 border 복사
+        for rn in range(7, 25):
+            ws.cell(rn, col).border = copy.copy(ws_src.cell(rn, 54).border)
+
+        # 열 너비
+        ws.column_dimensions[get_column_letter(col)].width = 4.9
+
+    # F4 서식 복원 (start_year 연도 대표셀)
     f4 = ws.cell(4, 6)
     pf = PatternFill(fill_type="solid")
-    pf.fgColor.type="theme"; pf.fgColor.theme=2; pf.fgColor.tint=-0.1
-    f4.fill=pf
-    f4.font=Font(name="맑은 고딕",bold=True,size=15,color="FF000000")
-    f4.alignment=Alignment(horizontal="center",vertical="center")
-    f4.border=Border(left=med,right=med,top=med,bottom=none_s)
+    pf.fgColor.type = "theme"; pf.fgColor.theme = 2; pf.fgColor.tint = -0.1
+    f4.fill      = pf
+    f4.font      = Font(name="맑은 고딕", bold=True, size=15, color="FF000000")
+    f4.alignment = Alignment(horizontal="center", vertical="center")
+    f4.border    = Border(left=med, right=med, top=med, bottom=none_s)
+    f4.value     = f"{start_year}년"
 
-    # 병합 재설정
-    def sm(nsc,sr,nec,er):
-        if nsc and nec and nsc<=nec:
-            try: ws.merge_cells(start_row=sr,start_column=nsc,end_row=er,end_column=nec)
+    # ── 병합 재설정 ───────────────────────────────────────────────────────────
+    def sm(nsc, sr, nec, er):
+        if nsc and nec and nsc <= nec:
+            try: ws.merge_cells(start_row=sr, start_column=nsc, end_row=er, end_column=nec)
             except: pass
 
-    for s in [nc(c) for c in range(18,51,4) if nc(c)]:
-        sm(s,5,s+3,5)
-    sm(nc(54),5,nc(54)+3,5)
-    sm(nc(58),5,49,5)
-    sm(50,5,53,5)
-    sm(6,4,41,4)
-    sm(42,4,53,4)
-    for (sc,sr,ec,er) in [(2,4,5,5),(2,8,2,10),(2,11,2,13),
-                           (3,8,3,10),(3,11,3,13),(3,15,3,18),(3,20,3,22),
-                           (4,9,4,10),(4,12,4,13)]:
-        try: ws.merge_cells(start_row=sr,start_column=sc,end_row=er,end_column=ec)
+    # 5행: 월별 병합 (각 월의 첫~끝 컬럼)
+    month_groups = {}
+    for item in header_layout:
+        m = item['month']
+        if m not in month_groups:
+            month_groups[m] = {'start': item['col'], 'end': item['col']}
+        else:
+            month_groups[m]['end'] = item['col']
+
+    for m, cols in month_groups.items():
+        if cols['start'] < cols['end']:
+            sm(cols['start'], 5, cols['end'], 5)
+
+    # 4행: 전체 연도 병합 (F열 ~ 마지막 컬럼)
+    sm(6, 4, last_col, 4)
+
+    # 기타 고정 병합 (좌측 항목 영역)
+    for (sc, sr, ec, er) in [
+        (2, 4, 5, 5), (2, 8, 2, 10), (2, 11, 2, 13),
+        (3, 8, 3, 10), (3, 11, 3, 13), (3, 15, 3, 18), (3, 20, 3, 22),
+        (4, 9, 4, 10), (4, 12, 4, 13)
+    ]:
+        try: ws.merge_cells(start_row=sr, start_column=sc, end_row=er, end_column=ec)
         except: pass
 
-    # 열너비 4.9
-    for col in range(6, 54):
-        ws.column_dimensions[get_column_letter(col)].width=4.9
+    # 컬럼 삭제 (F~Q, 12개)
+    ws.delete_cols(DEL_START, DEL_COUNT)
+
+    # 열너비 4.9 (남은 헤더 컬럼)
+    for col in range(6, last_col - DEL_COUNT + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 4.9
 
     # 전체 글자 검은색
     for row in ws.iter_rows():
         for cell in row:
-            if isinstance(cell,MergedCell): continue
+            if isinstance(cell, MergedCell): continue
             if cell.font:
-                f=cell.font
-                cell.font=Font(name=f.name,size=f.size,bold=f.bold,
-                               italic=f.italic,underline=f.underline,
-                               strike=f.strike,color="FF000000")
+                f = cell.font
+                cell.font = Font(name=f.name, size=f.size, bold=f.bold,
+                                 italic=f.italic, underline=f.underline,
+                                 strike=f.strike, color="FF000000")
 
     # 취약점 자체점검 미포함
     if not include_vuln_self:
-        ws.delete_rows(24,1)
-        for col in range(2,6):
-            c=ws.cell(23,col); b=c.border
-            c.border=Border(left=b.left,right=b.right,top=b.top,bottom=med)
+        ws.delete_rows(24, 1)
+        for col in range(2, 6):
+            c = ws.cell(23, col); b = c.border
+            c.border = Border(left=b.left, right=b.right, top=b.top, bottom=med)
 
-    safe_name=re.sub(r'[\\/:*?"<>|]','_',client_name)
-    filename=f"{safe_name}_CSAP_간편등급_컨설팅_일정_v2_1.xlsx"
-    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', client_name)
+    filename  = f"{safe_name}_CSAP_간편등급_컨설팅_일정_v2_1.xlsx"
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf, filename
 
 
@@ -252,7 +300,7 @@ def home():
 
 @app.route("/replacer")
 def replacer():
-    return render_template("index.html")   # 기존 워드 치환 페이지
+    return render_template("index.html")
 
 @app.route("/replace", methods=["POST"])
 def replace():
