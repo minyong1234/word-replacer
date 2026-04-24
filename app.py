@@ -103,14 +103,16 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     start_year   = sd.year
     start_month  = sd.month
 
-    # SHIFT = 시작일이 속한 주차 (0-indexed)
-    # header는 항상 시작월 1주부터, 간트 색칠은 SHIFT만큼 오른쪽으로 이동
-    # 예) 5월 18일 → SHIFT=2 → header col6=5월1주, 간트 col8(5월3주)부터 색칠
+    # SHIFT = (시작일의 주차 0-indexed) - 1
+    # 템플릿 원본 col7이 "시작 다음주"이므로 -1 보정해서 "시작주 자체"로 맞춤
+    # 예) 5월 18일(3주) → swo=2, SHIFT=1 → col7+1=col8=5월3주 색칠 시작 ✓
+    # 예) 5월 6일(1주)  → swo=0, SHIFT=-1 → col7-1=col6=5월1주 색칠 시작 ✓
     first_day_of_month = sd.replace(day=1)
     days_to_monday = (7 - first_day_of_month.weekday()) % 7
     first_monday = (first_day_of_month if days_to_monday == 0
                     else first_day_of_month + timedelta(days=days_to_monday))
-    SHIFT = (sd - first_monday).days // 7 if sd >= first_monday else 0
+    swo = (sd - first_monday).days // 7 if sd >= first_monday else 0
+    SHIFT = swo - 1
 
     med    = Side(border_style="medium")
     thin   = Side(border_style="thin")
