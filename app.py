@@ -98,25 +98,15 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     start_year   = sd.year
     start_month  = sd.month
 
-    # 템플릿 기준 shift 계산
-    # 템플릿: col6 = 4월 1주 (TMPL_START_MONTH=4)
-    # 실제 시작월의 col6 대응 원본 컬럼을 계산해야 함
-    # 원본 템플릿에서 start_month의 첫 컬럼 = col6 + (start_month - TMPL_START_MONTH) * 평균주수
-    # 실제로는 주수가 달마다 다르므로 직접 계산
-    # 템플릿 기준 col 계산: 4월=col6, 이후 월별 실제 주수만큼 증가 (템플릿 연도=2026 기준)
-    TMPL_YEAR = 2026
-    tmpl_col = GANTT_COL_START
-    for m in range(TMPL_START_MONTH, start_month):
-        tmpl_col += get_week_count(TMPL_YEAR, m)
-    # tmpl_col = 템플릿에서 start_month 1주에 해당하는 컬럼
-    # 사용자 시작일의 주차 offset (첫 번째 월요일 기준)
-    first_day = sd.replace(day=1)
-    days_to_monday = (7 - first_day.weekday()) % 7
-    first_monday = first_day if days_to_monday == 0 else first_day + timedelta(days=days_to_monday)
-    week_of_month = (sd - first_monday).days // 7 if sd >= first_monday else 0
-    orig_start_col = tmpl_col + week_of_month
-    # SHIFT = 실제 시작 컬럼 - 템플릿 간트 시작 컬럼
-    SHIFT = orig_start_col - GANTT_COL_START
+    # SHIFT = 시작일이 해당 월의 몇 번째 주인지 (0-indexed)
+    # header_layout은 항상 col6=시작월1주부터 시작하고
+    # 템플릿 간트도 col6=4월1주 기준이므로 두 기준이 동일
+    # → 시작일의 주차 offset만큼만 밀면 됨
+    first_day_of_month = sd.replace(day=1)
+    days_to_monday = (7 - first_day_of_month.weekday()) % 7
+    first_monday = (first_day_of_month if days_to_monday == 0
+                    else first_day_of_month + timedelta(days=days_to_monday))
+    SHIFT = (sd - first_monday).days // 7 if sd >= first_monday else 0
 
     med    = Side(border_style="medium")
     thin   = Side(border_style="thin")
