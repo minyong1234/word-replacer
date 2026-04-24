@@ -368,9 +368,8 @@ def generate_wbs(client_name, start_date_str, include_vuln_self, grade='간편�
             b = c.border
             c.border = Border(left=b.left, right=b.right, top=b.top, bottom=med)
 
-    safe_name  = re.sub(r'[\\/:*?"<>|]', '_', client_name)
-    grade_name = grade.replace('등급', '')
-    filename   = f"{safe_name}_CSAP_{grade_name}등급_컨설팅_일정_v2_1.xlsx"
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', client_name)
+    filename  = f"{safe_name}_CSAP {grade} 컨설팅 일정.xlsx"
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf, filename
 
