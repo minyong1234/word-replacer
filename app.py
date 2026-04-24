@@ -130,7 +130,7 @@ def build_header_layout(start_year, start_month, end_year, end_month):
     return layout
 
 
-def generate_wbs(client_name, start_date_str, include_vuln_self):
+def generate_wbs(client_name, start_date_str, include_vuln_self, grade='간편등급'):
     sd           = date.fromisoformat(start_date_str)
     start_year   = sd.year
     start_month  = sd.month
@@ -305,7 +305,7 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
 
     # ── 3행 제목 셀 서식 복원 (B3:E4) ────────────────────────────────────────
     title_cell = ws.cell(HEADER_ROW_YEAR, 2)
-    title_cell.value = "간편등급 CSAP 컨설팅 일정"
+    title_cell.value = f"{grade} CSAP 컨설팅 일정"
     src_title = ws_src.cell(HEADER_ROW_YEAR, 2)
     title_cell.font      = copy.copy(src_title.font)
     title_cell.fill      = copy.copy(src_title.fill)
@@ -368,8 +368,9 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             b = c.border
             c.border = Border(left=b.left, right=b.right, top=b.top, bottom=med)
 
-    safe_name = re.sub(r'[\\/:*?"<>|]', '_', client_name)
-    filename  = f"{safe_name}_CSAP_간편등급_컨설팅_일정_v2_1.xlsx"
+    safe_name  = re.sub(r'[\\/:*?"<>|]', '_', client_name)
+    grade_name = grade.replace('등급', '')
+    filename   = f"{safe_name}_CSAP_{grade_name}등급_컨설팅_일정_v2_1.xlsx"
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf, filename
 
@@ -437,10 +438,13 @@ def wbs_generate():
     client_name       = request.form.get("client_name", "").strip()
     start_date        = request.form.get("start_date", "")
     include_vuln_self = request.form.get("include_vuln_self") == "true"
+    grade             = request.form.get("grade", "간편등급")
+    if grade not in ("간편등급", "표준등급"):
+        grade = "간편등급"
     if not client_name or not start_date:
         return jsonify({"error": "고객사명과 시작일을 입력해주세요."}), 400
     try:
-        buf, filename = generate_wbs(client_name, start_date, include_vuln_self)
+        buf, filename = generate_wbs(client_name, start_date, include_vuln_self, grade)
         return send_file(buf,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True, download_name=filename)
