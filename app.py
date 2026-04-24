@@ -444,9 +444,15 @@ def wbs_generate():
         return jsonify({"error": "고객사명과 시작일을 입력해주세요."}), 400
     try:
         buf, filename = generate_wbs(client_name, start_date, include_vuln_self, grade)
-        return send_file(buf,
+        from urllib.parse import quote
+        encoded = quote(filename.encode('utf-8'))
+        resp = send_file(buf,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True, download_name=filename)
+        resp.headers['Content-Disposition'] = (
+            f"attachment; filename*=UTF-8''{encoded}"
+        )
+        return resp
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
