@@ -58,15 +58,19 @@ def is_colored(f):
     return False
 
 def get_week_count(year, month):
-    """매월 1일이 속한 주의 월요일을 1주 기준, 최대 5주"""
-    first_day    = date(year, month, 1)
-    first_monday = first_day - timedelta(days=first_day.weekday())
-    last_day     = date(year, month, calendar.monthrange(year, month)[1])
-    count, week_start = 0, first_monday
-    while week_start <= last_day and count < 5:
-        count += 1
-        week_start += timedelta(weeks=1)
-    return count
+    """
+    해당 월의 첫 번째 월요일이 있는 주 = 1주,
+    마지막 날이 속한 주 = 마지막 주 (최대 5주)
+    """
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, calendar.monthrange(year, month)[1])
+    days_to_monday = (7 - first_day.weekday()) % 7
+    first_monday   = first_day if days_to_monday == 0 else first_day + timedelta(days=days_to_monday)
+    if first_monday > last_day:
+        return 0
+    last_monday = last_day - timedelta(days=last_day.weekday())
+    count = (last_monday - first_monday).days // 7 + 1
+    return min(count, 5)
 
 def next_ym(year, month):
     return (year + 1, 1) if month == 12 else (year, month + 1)
@@ -85,10 +89,6 @@ def col_to_ym(col_after_del, start_year, start_month):
     return start_year, 12
 
 def build_header_layout(start_year, start_month, end_year, end_month):
-    """
-    F열(col=6)부터 시작월 ~ end_month 까지 컬럼 정보 반환.
-    end_month = 마지막 마일스톤 월 + 1 (여유)
-    """
     col    = 6
     layout = []
     cur_y, cur_m = start_year, start_month
@@ -161,13 +161,8 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             c.fill = copy.copy(src_yell.fill if ftype == 'rgb' else src_blue.fill)
 
     # ── 23행 마지막 마일스톤 컬럼 → 실제 월 파악 ─────────────────────────────
-    # ORIG_GANTT[23] = [(46, ...)] → shift 적용 후 삭제 전 컬럼
     last_ms_col_pre  = 46 + SHIFT
-    # 삭제 후 컬럼 번호로 변환 (DEL_START=6, DEL_COUNT=12 → col>=18 이면 -12)
-    if last_ms_col_pre >= DEL_START + DEL_COUNT:
-        last_ms_col_post = last_ms_col_pre - DEL_COUNT
-    else:
-        last_ms_col_post = last_ms_col_pre
+    last_ms_col_post = last_ms_col_pre - DEL_COUNT if last_ms_col_pre >= DEL_START + DEL_COUNT else last_ms_col_pre
 
     # ── 병합 완전 해제 ────────────────────────────────────────────────────────
     for mr in [str(m) for m in ws.merged_cells.ranges]:
@@ -176,21 +171,19 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     # ── 컬럼 삭제 (F~Q, 12개) — 헤더 쓰기 전에 먼저 삭제 ────────────────────
     ws.delete_cols(DEL_START, DEL_COUNT)
 
-    # ── 마지막 마일스톤 월 파악 (삭제 후 기준) ───────────────────────────────
+    # ── 마지막 마일스톤 월 파악 후 +1달 ─────────────────────────────────────
     last_ms_year, last_ms_month = col_to_ym(last_ms_col_post, start_year, start_month)
-    # 여유 +1달
     end_year, end_month = next_ym(last_ms_year, last_ms_month)
 
     # ── 헤더 레이아웃 생성 ────────────────────────────────────────────────────
     header_layout = build_header_layout(start_year, start_month, end_year, end_month)
-    last_col      = header_layout[-1]['col'] if header_layout else 6
 
     # 서식 참조 (원본 54번 컬럼)
     ref4 = ws_src.cell(4, 54)
     ref5 = ws_src.cell(5, 54)
     ref6 = ws_src.cell(6, 54)
 
-    # 연도 구간 파악 (4행 병합·테두리용)
+    # 연도 구간 파악
     year_groups = {}
     for item in header_layout:
         y = item['year']
@@ -198,6 +191,12 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
             year_groups[y] = {'start': item['col'], 'end': item['col']}
         else:
             year_groups[y]['end'] = item['col']
+
+    # 원본 템플릿에서 7~23행의 행별 top/bottom 테두리 패턴 수집 (col 무관하게 행 고유)
+    row_borders = {}
+    for rn in range(7, 25):
+        src_border = ws_src.cell(rn, 20).border  # 임의의 간트 영역 컬럼 참조
+        row_borders[rn] = {'top': src_border.top, 'bottom': src_border.bottom}
 
     # ── 4/5/6행 및 7~24행 헤더 작성 ─────────────────────────────────────────
     for item in header_layout:
@@ -222,8 +221,7 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
         c5.border    = Border(
             left   = med if item['is_month_start'] else none_s,
             right  = med if item['is_month_end']   else none_s,
-            top    = med,
-            bottom = med,
+            top    = med, bottom = med,
         )
 
         # 4행: 연도 (연도 첫 컬럼에만 값)
@@ -235,16 +233,19 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
         c4.border    = Border(
             left   = med if is_year_start else none_s,
             right  = med if is_year_end   else none_s,
-            top    = med,
-            bottom = none_s,
+            top    = med, bottom = none_s,
         )
 
-        # 7~24행: thin 세로 테두리
+        # 7~24행: 모든 테두리 (상하좌우)
         for rn in range(7, 25):
-            existing = ws.cell(rn, col).border
+            # 월 경계(첫주/끝주)는 좌우 medium, 나머지는 thin
+            left_border  = med if item['is_month_start'] else thin
+            right_border = med if item['is_month_end']   else thin
+            # 행별 top/bottom은 원본 패턴 유지
+            rb = row_borders.get(rn, {'top': thin, 'bottom': thin})
             ws.cell(rn, col).border = Border(
-                left=thin, right=thin,
-                top=existing.top, bottom=existing.bottom,
+                left=left_border, right=right_border,
+                top=rb['top'], bottom=rb['bottom'],
             )
 
         ws.column_dimensions[get_column_letter(col)].width = 4.9
