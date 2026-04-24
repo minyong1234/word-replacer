@@ -176,6 +176,15 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
     for mr in [str(m) for m in ws.merged_cells.ranges]:
         ws.unmerge_cells(mr)
 
+    # ── 헤더 행 기존 값/서식 클리어 (3,4,5행 간트 영역) ─────────────────────
+    for rn in (HEADER_ROW_YEAR, HEADER_ROW_MONTH, HEADER_ROW_WEEK):
+        for col in range(GANTT_COL_START, ws.max_column + 2):
+            c = ws.cell(rn, col)
+            if isinstance(c, MergedCell): continue
+            c.value  = None
+            c.fill   = PatternFill(fill_type=None)
+            c.border = Border()
+
     # ── 헤더 레이아웃 생성 ────────────────────────────────────────────────────
     header_layout = build_header_layout(start_year, start_month, end_year, end_month)
 
