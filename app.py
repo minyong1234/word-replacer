@@ -23,6 +23,7 @@ VULN_ROW         = 22   # 취약점 자체점검 행
 LAST_MS_ROW      = 21   # 마지막 마일스톤 행
 
 # 템플릿 기준: F열(col6) = 4월 1주
+TMPL_YEAR        = 2026
 TMPL_START_MONTH = 4
 TMPL_GANTT_START_COL = 6  # 템플릿에서 간트 첫 컬럼
 
