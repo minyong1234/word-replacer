@@ -2,6 +2,8 @@ from flask import Flask, request, send_file, render_template, jsonify
 from replacer import replace_in_docx
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.cell.text import InlineFont
+from openpyxl.cell.rich_text import TextBlock, CellRichText
 from openpyxl.cell.cell import MergedCell
 from openpyxl.utils import get_column_letter
 import os, json, tempfile, zipfile, copy, io, re, calendar
@@ -36,6 +38,36 @@ def is_colored(f):
         try: return f.fgColor.rgb not in ('00000000', 'FFFFFFFF', '00FFFFFF')
         except: pass
     return False
+
+def apply_red_symbol(ws):
+    """워크시트 전체에서 ※ 기호만 빨간색으로 처리"""
+    from openpyxl.cell.cell import MergedCell
+    red_font_cache = {}
+
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell, MergedCell): continue
+            if not cell.value or not isinstance(cell.value, str): continue
+            if '※' not in cell.value: continue
+
+            f = cell.font
+            key = (f.name, f.size, f.bold)
+            if key not in red_font_cache:
+                red_font_cache[key] = InlineFont(rFont=f.name, sz=int(f.size) if f.size else 11,
+                                                  b=f.bold, color='FFFF0000')
+            red_font   = red_font_cache[key]
+            black_font = InlineFont(rFont=f.name, sz=int(f.size) if f.size else 11,
+                                    b=f.bold, color='FF000000')
+
+            parts  = cell.value.split('※')
+            blocks = []
+            for i, part in enumerate(parts):
+                if part:
+                    blocks.append(TextBlock(black_font, part))
+                if i < len(parts) - 1:
+                    blocks.append(TextBlock(red_font, '※'))
+
+            cell.value = CellRichText(*blocks)
 
 def get_week_count(year, month):
     """첫 번째 월요일이 있는 주=1주, 마지막 날이 속한 주=마지막 주 (최대 5주)"""
@@ -324,6 +356,9 @@ def generate_wbs(client_name, start_date_str, include_vuln_self):
                 cell.font = Font(name=f.name, size=f.size, bold=f.bold,
                                  italic=f.italic, underline=f.underline,
                                  strike=f.strike, color="FF000000")
+
+    # ── ※ 기호 빨간색 적용 ──────────────────────────────────────────────────
+    apply_red_symbol(ws)
 
     # ── 취약점 자체점검 미포함 시 행 삭제 ────────────────────────────────────
     if not include_vuln_self:
